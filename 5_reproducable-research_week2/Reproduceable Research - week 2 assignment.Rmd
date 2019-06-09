@@ -1,0 +1,113 @@
+---
+title: "Coursera - Reproduceable Research - Week 2 Assignment"
+author: "Guido van Kleef"
+date: "9 june 2019"
+output: html_document
+---
+###Download the data
+
+```{r}
+library(downloader)
+time <- Sys.time()
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+if(!dir.exists("./data")){dir.create("./data")}
+if(!file.exists("./data/data.zip")){download.file(url, destfile = "./data/data.zip")}
+if(!file.exists("./data/activity.csv")){unzip("./data/data.zip", exdir = "./data")}
+```
+Data downloaded at `r time`
+
+###Load the data into R
+```{r}
+data <- read.csv("./data/activity.csv")
+```
+
+###Number of steps taken per day
+1. Create a dataframe with the total_steps per day
+2. Create a histogram based on the total steps per day
+```{r}
+library(dplyr)
+library(ggplot2)
+
+daily_steps <- data %>%
+        group_by(data$date) %>%
+        summarise(total_steps = sum(steps))
+
+ggplot(daily_steps, aes(x = total_steps)) +
+        geom_histogram(binwidth = 5000)
+```
+
+Mean and median of total steps per day
+```{r}
+print(c(median = median(daily_steps$total_steps, na.rm = T), mean = mean(daily_steps$total_steps, na.rm = T)))
+```
+
+###Average daily activity pattern
+1. Create a dataframe with the average steps per 5 minute interval
+2. Create a line plot that shows the average steps per 5 minute interval
+```{r}
+avg_steps <- data %>%
+        group_by(interval) %>%
+        summarise(avg_steps = mean(steps, na.rm = TRUE))
+
+ggplot(avg_steps, aes(x = interval, y = avg_steps)) +
+        geom_line() +
+        labs(title = "Average steps per 5 minute interval",
+             x = "5 minute interval",
+             y = "average steps")
+```
+The 5 minute interval with maximum number of average daily steps
+```{r}
+max <- max(avg_steps$avg_steps)
+print(avg_steps$interval[avg_steps$avg_steps == max])
+```
+
+###Imput missing values
+
+1. number of missing values
+```{r}
+sum(is.na(data))
+````
+
+2. replacing missing values by the avg for the 5 minute interval
+```{r}
+data_correction <- data %>%  
+        group_by(interval) %>%
+        mutate(steps = replace(steps, is.na(steps), mean(steps, na.rm = T)))
+```
+3. histogram based on the corrected data
+The counts per bin of course increase because the NA values are replaced. The distribtion does not change.
+```{r}
+daily_steps_corrected <- data_correction %>%
+        group_by(date) %>%
+        summarise(total_steps = sum(steps))
+
+ggplot(daily_steps_corrected, aes(x = total_steps)) +
+        geom_histogram(binwidth = 5000)
+```
+4. The mean and median of the corrected data
+The median becomes equal to the mean, because we replaced the missing values by the mean of each group
+```{r}
+print(c(median = median(daily_steps_corrected$total_steps, na.rm = T), mean = mean(daily_steps_corrected$total_steps, na.rm = T)))
+```
+
+###Differences in activity patterns between weekdays and weekends
+1. Create a dataframe contain the avg steps per 5 minute interval per day of the week - weekday or weekend
+```{r}
+avg_weekdays <- data_correction %>%
+        mutate(weekdays = weekdays(as.Date(date))) %>%
+        mutate(weekdays = as.factor(case_when(grepl('Saturday|Sunday', weekdays) ~ "Weekend"
+                                    , !grepl('Saturday|Sunday', weekdays) ~ "Weekday",
+                                    TRUE ~ weekdays))) %>%
+        group_by(weekdays,interval) %>%
+        summarise(avg_steps = mean(steps))
+
+ggplot(avg_weekdays, aes(x = interval, y = avg_steps)) +
+        geom_line() +
+        facet_wrap(.~ weekdays) +
+        labs(title = "avg steps per 5 minute interval by weekend & weekdays",
+             x = "5 minute interval",
+             y = "Average steps")
+```
+
+
+
