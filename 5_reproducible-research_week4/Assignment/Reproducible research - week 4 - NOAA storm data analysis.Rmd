@@ -1,0 +1,110 @@
+---
+title: Weather events causing the most damage to the economy & public health in the
+  US  between 1995 and 2011
+author: "Guido van Kleef"
+date: "13 june 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+##Synopsis
+In this report we aim to find which weather events are the most harmful to the public health and economy in the United States between the years 1995 and 2011. We obtained data from the National Climatic Data Center (NCDC) who receive the storm related data from the National Weather Service (NWS). We specifically obtained data between the years 1995 and 2011 since there are more recent measurements and we are especailly interested in recents & recurring events, because these are more predictable and it's easier to come up with policies to reduce the health & economical damage caused by these events. From these data, we found that, Tornado's are by far the most harmful to both the publich health and economy. However, on average extreme heat is doing more damage to public health per incident and hurricanes are on average doing more damage to the economy, but these events are occuring less often than Tornado's so the overall impact is lower.
+
+
+##Data Processing
+
+###Download & read data
+1. Load the libraries needed for the analysis
+2. Download the data to a local directory & then read it into an R object: rawdata. 
+```{r, download}
+library(downloader)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(tidyr)
+
+if(!dir.exists("./data")){dir.create("./data")}
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+if(!file.exists("./data/stormdata.csv.bz2")){download.file(url, destfile = "./data/stormdata.csv.bz2")}
+unzip("./data/stormdata.csv.bz2", exdir = "./data")
+rawdata <- read.csv("./data/stormdata.csv.bz2")
+
+```
+
+###Prepare data
+1. Only selecting data between 1995 and 2011.
+2. Clean up the rawdata file by removing rows that only contain NA values
+3. Create columns for the crop and property damage expressed in absolute numbers. 
+In the original data file the numbers (PROPDMG and CROPDMG) are expressed by the units in the
+columns (PROPDMGEXP & CROPDMGEXP).
+```{r, prepare data}
+cleaned_data <- rawdata %>%
+        filter(as.Date(as.character(BGN_DATE),"%d/%m/%Y") >= as.Date("01/01/1995","%d/%m/%Y")) %>%
+        mutate(propdmg = case_when(is.na(PROPDMG) ~ 0,
+                                   PROPDMGEXP == "K" ~ PROPDMG * 1000, 
+                                   PROPDMGEXP == "M" ~ PROPDMG * 1000000),
+               cropdmg = case_when(CROPDMGEXP == "K" ~ CROPDMG * 1000,
+                                   CROPDMGEXP == "M" ~ CROPDMG * 1000000,
+                                   is.na(CROPDMG) ~ 0)) %>%
+        mutate(propdmg = replace(propdmg, is.na(propdmg),0),
+               cropdmg = replace(cropdmg, is.na(cropdmg),0)) %>%
+        filter_all(any_vars(!is.na(.)))
+````
+
+
+##Results
+
+Top 10 events causing the most fatalities and injuries
+```{r, top 10 events fatalities & injuries}
+agg_victims_tot <- cleaned_data %>%
+        group_by(EVTYPE) %>%
+        summarise(fatalities = sum(FATALITIES), 
+                  injuries = sum(INJURIES), 
+                  total_victims = sum(FATALITIES) + sum(INJURIES),
+                  avg_victims = mean(FATALITIES) + mean(INJURIES)) %>%
+        arrange(desc(total_victims)) %>%
+        mutate_each(funs(prettyNum(., big.mark=",")))
+
+top_10 <- head(agg_victims_tot,10)
+
+top_10_data <- cleaned_data %>%
+        filter(EVTYPE %in% unique(top_10$EVTYPE)) %>%
+        group_by(year = floor_date(as.Date(as.character(BGN_DATE),"%d/%m/%Y"),"year"),
+                 EVTYPE) %>%
+        summarise(total_victims = sum(FATALITIES) + sum(INJURIES))
+
+ggplot(top_10_data, aes(x = year, y = total_victims)) +
+        geom_line() +
+        facet_wrap(.~EVTYPE, scales = "free") +
+        labs(title = "Top 10 weather events causing the most victims (injuries & fatalities) in the US since 1995", x = "Year", y = "Total Victims")
+        
+print(head(agg_victims_tot,10))
+````
+
+
+Top 10 events causing the most total economical damage
+```{r, top 10 events economical damage}
+agg_eco_dmg_tot <- cleaned_data %>%
+        group_by(EVTYPE) %>%
+        summarise(propdmg_costs = sum(propdmg), 
+                                 cropdmg_costs = sum(cropdmg),
+                                 total_costs = sum(propdmg)+sum(cropdmg),
+                                 avg_costs = mean(propdmg) + mean(cropdmg)) %>%
+        arrange(desc(total_costs)) %>%
+        mutate_each(funs(prettyNum(., big.mark=",")))
+
+top_10 <- head(agg_eco_dmg_tot,10)
+
+top_10_data <- cleaned_data %>%
+        filter(EVTYPE %in% unique(top_10$EVTYPE)) %>%
+        group_by(year = floor_date(as.Date(as.character(BGN_DATE),"%d/%m/%Y"),"year"),
+                 EVTYPE) %>%
+        summarise(total_costs = sum(propdmg)+sum(cropdmg))
+
+ggplot(top_10_data, aes(x = year, y = total_costs)) +
+        geom_line() +
+        facet_wrap(.~EVTYPE, scales = "free") +
+        labs(title = "Top 10 weather events causing the most economical damage in the US since 1995", x = "Year", y = "Total Costs")
+
+print(head(agg_eco_dmg_tot,10))
+````
